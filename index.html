@@ -1,1 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動森大頭菜價格預測網</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Nunito', 'Microsoft JhengHei', sans-serif;
+            background-color: #F1F5E8;
+            background-image: radial-gradient(#D4E0C2 2px, transparent 2px);
+            background-size: 30px 30px;
+        }
+        .wood-board {
+            background-color: #FFFDF9;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05), 0 0 0 6px #E8E1D5;
+            border-radius: 2rem;
+        }
+        .input-wood {
+            background-color: #FBF9F6;
+            border: 2px solid #E8E1D5;
+            transition: all 0.2s;
+        }
+        .input-wood:focus {
+            border-color: #A3D9A5;
+            background-color: #FFFFFF;
+            box-shadow: 0 0 0 4px rgba(163, 217, 165, 0.2);
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // 自製可愛大頭菜 Icon
+        const TurnipIcon = () => (
+            <svg width="48" height="48" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-sm">
+                <path d="M50 20 C 30 20, 20 40, 20 55 C 20 75, 35 90, 50 90 C 65 90, 80 75, 80 55 C 80 40, 70 20, 50 20 Z" fill="#FDFBF7" stroke="#6D5545" strokeWidth="5" strokeLinejoin="round"/>
+                <path d="M50 25 C 40 25, 35 15, 30 5 C 40 10, 45 15, 50 20 C 55 15, 60 10, 70 5 C 65 15, 60 25, 50 25 Z" fill="#9CD870" stroke="#6D5545" strokeWidth="4" strokeLinejoin="round"/>
+                <circle cx="35" cy="55" r="4" fill="#6D5545"/>
+                <circle cx="65" cy="55" r="4" fill="#6D5545"/>
+                <path d="M 45 65 Q 50 70 55 65" fill="none" stroke="#6D5545" strokeWidth="4" strokeLinecap="round"/>
+            </svg>
+        );
+
+        // 核心預測演算法 (完全依照圖片流程圖改寫)
+        const analyzeTurnipPrices = (buyPrice, prices) => {
+            const bp = parseInt(buyPrice);
+            if (isNaN(bp) || bp < 90 || bp > 110) {
+                return { 
+                    pattern: "請輸入有效的買價", 
+                    advice: "大頭菜的買入價應該在 90 ~ 110 鈴錢之間喔！",
+                    color: "text-gray-600", bg: "bg-gray-100", icon: "📝"
+                };
+            }
+
+            // 將輸入轉換為數值陣列，空值為 null
+            const p = prices.map(v => (v !== "" && v !== null && !isNaN(parseInt(v))) ? parseInt(v) : null);
+
+            if (p.every(v => v === null)) {
+                return {
+                    pattern: "等待輸入報價...",
+                    advice: "請在下方輸入 Nook 商店每天的報價，輸入越多天，預測越準確！",
+                    color: "text-[#6D5545]", bg: "bg-[#F1F5E8]", icon: "🌱"
+                };
+            }
+
+            const monAm = p[0];
+            
+            // 流程圖的步驟1需要週一上午的價格 (R值)
+            if (monAm === null) {
+                return {
+                    pattern: "缺少週一上午報價",
+                    advice: "流程圖必須以「週一上午」的價格作為判定基準 (步驟1)，請補上報價以進行精準分析！",
+                    color: "text-orange-700", bg: "bg-orange-100", icon: "⚠️"
+                };
+            }
+
+            // 步驟 1: 計算 R 值 (週一上午賣價 ÷ 週日買價 = R)
+            const R = parseFloat((monAm / bp).toFixed(4));
+            
+            // 計算最後有填寫的 index
+            let lastValidIndex = -1;
+            for (let i = 0; i < 12; i++) {
+                if (p[i] !== null) lastValidIndex = i;
+            }
+
+            // 尋找開始上漲的起點 (連續比對)
+            let riseStartIndex = -1;
+            let isAlwaysDecreasing = true;
+            for (let i = 1; i <= lastValidIndex; i++) {
+                if (p[i] !== null && p[i-1] !== null) {
+                    if (p[i] > p[i-1]) {
+                        riseStartIndex = i;
+                        isAlwaysDecreasing = false;
+                        break; // 找到第一次上漲的點就跳出
+                    }
+                }
+            }
+
+            // --- 準備出售時機建議文字 ---
+            const waveTiming = "\n\n💡 出售時機：\n波型：請在上漲階段找個會賺錢的賣價直接賣掉。";
+            const largeSpikeTiming = "\n\n💡 出售時機：\n三期型：請在暴漲階段第三期賣掉。";
+            const smallSpikeTiming = "\n\n💡 出售時機：\n四期型：請在上漲階段的第四期賣掉。";
+            const decreasingTiming = "\n\n💡 出售時機：\n遞減型：很難說，因為初期症狀與三期型一模一樣，差別只在三期型最晚週四下午會漲，而遞減型不會而已，如果不到其他人島上賣的話，我只能說及早發現及早停損。";
+
+            // --- 步驟判斷開始 ---
+            if (R >= 0.9) {
+                // 步驟 1 結果：R > 0.9 -> 進入 步驟 2-1
+                const monPm = p[1];
+                const tueAm = p[2];
+                
+                // 【修正】：只要週一下午跌破 0.8 倍，就能提早判定是波型，不需等待週二資料！
+                if (monPm !== null && (monPm / bp) < 0.8) {
+                    return {
+                        pattern: "🌊 波浪型",
+                        advice: `(步驟2-1) 週一下午已跌至0.8倍以下。不需等待週二上午，結論確定為【波浪型】！` + waveTiming,
+                        color: "text-blue-700", bg: "bg-blue-100", icon: "🌊"
+                    };
+                }
+                
+                // 若週一下午未跌破 0.8，則必須等待週二上午的資料來判定
+                if (monPm !== null && tueAm !== null) {
+                    const ans2 = (tueAm / bp) < 1.4; // 沒有漲至1.4倍以上 = 是 (<1.4)
+                    
+                    if (ans2) {
+                        return {
+                            pattern: "🌊 波浪型",
+                            advice: `(步驟2-1) 週二上午沒有漲至1.4倍以上。結論為【波浪型】。` + waveTiming,
+                            color: "text-blue-700", bg: "bg-blue-100", icon: "🌊"
+                        };
+                    } else {
+                        return {
+                            pattern: "✨ 四期型 (小高爐)",
+                            advice: `(步驟2-1) 週一下午未跌破0.8倍，且週二上午已漲至1.4倍以上。結論為【四期型】。` + smallSpikeTiming,
+                            color: "text-orange-700", bg: "bg-orange-100", icon: "✨"
+                        };
+                    }
+                } else {
+                    return {
+                        pattern: "🔍 步驟 2-1 (波型或四期型)",
+                        advice: `(步驟1) 算出 R = ${R.toFixed(2)}。請補齊後續報價確認結果！(若週一下午直接跌破0.8倍即可確定為波型)`,
+                        color: "text-blue-700", bg: "bg-blue-100", icon: "📊"
+                    };
+                }
+            }
+            else if (R >= 0.85 && R < 0.9) {
+                // 步驟 1 結果：0.9 > R > 0.85 -> 進入 步驟 3
+                if (isAlwaysDecreasing) {
+                    if (lastValidIndex >= 7) { // index 7 為週四下午
+                        return {
+                            pattern: "🚨 遞減型 (血本無歸)",
+                            advice: "(步驟3) 到了禮拜四下午還是跌。結論為【遞減型】！本週不會漲了，快去別人島上賣！" + decreasingTiming,
+                            color: "text-red-700", bg: "bg-red-100", icon: "📉"
+                        };
+                    } else {
+                        return {
+                            pattern: "📉 步驟 3 (觀察下跌中...)",
+                            advice: `目前持續下跌。若在「週四下午前」有開始漲，進入步驟4(三期或四期)；若到週四下午還在跌則是遞減型。`,
+                            color: "text-orange-700", bg: "bg-orange-100", icon: "⏳"
+                        };
+                    }
+                } else {
+                    // 已開始上漲，進入 步驟 4
+                    const phase2RiseIndex = riseStartIndex + 1;
+                    
+                    if (p[phase2RiseIndex] !== null && p[phase2RiseIndex] !== undefined) {
+                        if (p[phase2RiseIndex] / bp > 1.4) {
+                            return {
+                                pattern: "👑 三期型 (大高爐)",
+                                advice: `(步驟4) 開始漲的第2期(第2個半天)漲幅超過1.4倍！結論為【三期型】！` + largeSpikeTiming,
+                                color: "text-pink-700", bg: "bg-pink-100", icon: "💰"
+                            };
+                        } else {
+                            return {
+                                pattern: "✨ 四期型 (小高爐)",
+                                advice: `(步驟4) 開始漲的第2期(第2個半天)未達1.4倍。結論為【四期型】！` + smallSpikeTiming,
+                                color: "text-orange-700", bg: "bg-orange-100", icon: "✨"
+                            };
+                        }
+                    } else {
+                        return {
+                            pattern: "🚀 步驟 4 (開始變調上漲！)",
+                            advice: `價格已開始上漲！請輸入「下一個半天」的價格，若超過1.4倍即為三期型(大高爐)，否則為四期型。`,
+                            color: "text-green-700", bg: "bg-green-100", icon: "📈"
+                        };
+                    }
+                }
+            }
+            else if (R >= 0.8 && R < 0.85) {
+                // 步驟 1 結果：0.85 > R > 0.8 -> 結論 四期型
+                return {
+                    pattern: "✨ 四期型 (小高爐) 確定",
+                    advice: `(步驟1) 算出 R = ${R.toFixed(2)} 介於 0.8~0.85。直接看結論：本週確定是【四期型】！` + smallSpikeTiming,
+                    color: "text-orange-700", bg: "bg-orange-100", icon: "🔮"
+                };
+            }
+            else if (R >= 0.6 && R < 0.8) {
+                // 步驟 1 結果：0.8 > R > 0.6 -> 進入 步驟 2-2
+                let dropExceeds5Percent = false;
+                let dropCount = 0; // 跌幾個半天
+                
+                for (let i = 1; i <= lastValidIndex; i++) {
+                    if (p[i] !== null && p[i-1] !== null) {
+                        if (p[i] < p[i-1]) {
+                            dropCount++;
+                            const dropRatio = (p[i-1] - p[i]) / bp;
+                            if (dropRatio > 0.05) { // 跌幅超過5%
+                                dropExceeds5Percent = true;
+                            }
+                        } else {
+                            break; // 開始漲就不算連續下跌了
+                        }
+                    } else {
+                        break; // 缺資料中斷
+                    }
+                }
+                
+                if (dropExceeds5Percent) {
+                    return {
+                        pattern: "🌊 波浪型",
+                        advice: `(步驟2-2) 觀察到有每期之間跌幅超過5%。結論為【波浪型】！` + waveTiming,
+                        color: "text-blue-700", bg: "bg-blue-100", icon: "🌊"
+                    };
+                } else if (dropCount >= 3) {
+                    return {
+                        pattern: "✨ 四期型 (小高爐)",
+                        advice: `(步驟2-2) 跌幅皆未超過5%，且已經跌了3個半天以上。結論為【四期型】！` + smallSpikeTiming,
+                        color: "text-orange-700", bg: "bg-orange-100", icon: "✨"
+                    };
+                } else {
+                    return {
+                        pattern: "🔍 步驟 2-2 (四期或波型)",
+                        advice: `請繼續觀察接下來1~2個半天的報價。若某期跌幅大於5%為波型；若連續跌3個半天以上則為四期型。`,
+                        color: "text-blue-700", bg: "bg-blue-100", icon: "📊"
+                    };
+                }
+            }
+            else {
+                // 步驟 1 結果：0.6 > R -> 結論 四期型
+                return {
+                    pattern: "✨ 四期型 (小高爐) 確定",
+                    advice: `(步驟1) 算出 R = ${R.toFixed(2)} 小於 0.6。直接看結論：本週確定是【四期型】！` + smallSpikeTiming,
+                    color: "text-orange-700", bg: "bg-orange-100", icon: "🔮"
+                };
+            }
+        };
+
+        const App = () => {
+            const [buyPrice, setBuyPrice] = useState("100");
+            const [prices, setPrices] = useState(Array(12).fill(""));
+            const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+
+            const handlePriceChange = (index, value) => {
+                const newPrices = [...prices];
+                newPrices[index] = value;
+                setPrices(newPrices);
+            };
+
+            const clearAll = () => {
+                if (isConfirmingClear) {
+                    setBuyPrice("");
+                    setPrices(Array(12).fill(""));
+                    setIsConfirmingClear(false);
+                } else {
+                    setIsConfirmingClear(true);
+                    // 3秒後自動恢復成原本的按鈕狀態
+                    setTimeout(() => setIsConfirmingClear(false), 3000);
+                }
+            };
+
+            const result = analyzeTurnipPrices(buyPrice, prices);
+            const days = ["週一", "週二", "週三", "週四", "週五", "週六"];
+
+            return (
+                <div className="min-h-screen py-10 px-4 sm:px-6 flex justify-center">
+                    <div className="max-w-2xl w-full">
+                        {/* 網頁標頭 */}
+                        <div className="text-center mb-8 flex flex-col items-center">
+                            <TurnipIcon />
+                            <h1 className="text-3xl font-black text-[#6D5545] mt-3 tracking-wide">大頭菜價格預測網</h1>
+                            <p className="text-[#8B7355] mt-2 font-bold">精準判斷走勢，實現鈴錢自由！</p>
+                        </div>
+
+                        {/* 分析結果卡片 */}
+                        <div className={`wood-board overflow-hidden mb-8 transition-colors duration-500`}>
+                            <div className={`${result.bg} p-6 flex flex-col sm:flex-row items-center sm:items-start gap-4 transition-colors duration-500`}>
+                                <div className="text-5xl">{result.icon}</div>
+                                <div className="flex-1 text-center sm:text-left">
+                                    <h2 className={`text-xl font-bold mb-2 ${result.color}`}>{result.pattern}</h2>
+                                    {/* 加上 whitespace-pre-line 確保換行符號 \n 可以正確換行 */}
+                                    <p className="text-[#5C4A3D] font-bold leading-relaxed whitespace-pre-line">{result.advice}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 輸入區塊 */}
+                        <div className="wood-board p-6 sm:p-8">
+                            {/* 週日買價設定 */}
+                            <div className="flex justify-between items-end mb-6 border-b-2 border-[#E8E1D5] pb-4">
+                                <div>
+                                    <label className="block text-[#8B7355] font-bold mb-2 text-sm">曹賣 週日買價</label>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="number" 
+                                            value={buyPrice}
+                                            onChange={(e) => setBuyPrice(e.target.value)}
+                                            className="input-wood w-24 text-center font-bold text-[#6D5545] text-lg rounded-xl px-3 py-2"
+                                            placeholder="90-110"
+                                        />
+                                        <span className="text-[#8B7355] font-bold">鈴錢</span>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={clearAll}
+                                    className={`text-sm font-bold px-4 py-2 rounded-lg transition-colors ${
+                                        isConfirmingClear 
+                                            ? "bg-red-500 text-white hover:bg-red-600 shadow-md" 
+                                            : "text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100"
+                                    }`}
+                                >
+                                    {isConfirmingClear ? "確定清除？" : "清除重填"}
+                                </button>
+                            </div>
+
+                            {/* 一週報價網格 */}
+                            <div className="grid grid-cols-7 gap-y-4 gap-x-2 sm:gap-4 items-center">
+                                {/* 表頭 */}
+                                <div className="col-span-1"></div>
+                                <div className="col-span-3 text-center text-[#8B7355] font-bold text-sm sm:text-base">
+                                    上午 <span className="block text-xs opacity-70 font-normal">08:00 - 11:59</span>
+                                </div>
+                                <div className="col-span-3 text-center text-[#8B7355] font-bold text-sm sm:text-base">
+                                    下午 <span className="block text-xs opacity-70 font-normal">12:00 - 22:00</span>
+                                </div>
+
+                                {/* 每日輸入欄位 */}
+                                {days.map((day, idx) => (
+                                    <React.Fragment key={day}>
+                                        <div className="col-span-1 text-center font-bold text-[#6D5545]">
+                                            {day}
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input 
+                                                type="number"
+                                                value={prices[idx * 2]}
+                                                onChange={(e) => handlePriceChange(idx * 2, e.target.value)}
+                                                className="input-wood w-full text-center font-bold text-[#6D5545] rounded-xl px-2 sm:px-3 py-3"
+                                                placeholder="輸入報價"
+                                            />
+                                        </div>
+                                        <div className="col-span-3">
+                                            <input 
+                                                type="number"
+                                                value={prices[idx * 2 + 1]}
+                                                onChange={(e) => handlePriceChange(idx * 2 + 1, e.target.value)}
+                                                className="input-wood w-full text-center font-bold text-[#6D5545] rounded-xl px-2 sm:px-3 py-3"
+                                                placeholder="輸入報價"
+                                            />
+                                        </div>
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <p className="text-center text-[#A3C08F] font-bold mt-8 text-sm">
+                            演算法基於動森解包數據與《大頭菜買賣全攻略》製作
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
