@@ -210,12 +210,12 @@
             else if (R >= 0.6 && R < 0.8) {
                 // 步驟 1 結果：0.8 > R > 0.6 -> 進入 步驟 2-2
                 let dropExceeds5Percent = false;
-                let dropCount = 0; // 跌幾個半天
+                let dropPhaseLength = 1; // 【修正】包含週一上午本身，算作下跌的第 1 個半天
                 
                 for (let i = 1; i <= lastValidIndex; i++) {
                     if (p[i] !== null && p[i-1] !== null) {
                         if (p[i] < p[i-1]) {
-                            dropCount++;
+                            dropPhaseLength++;
                             const dropRatio = (p[i-1] - p[i]) / bp;
                             if (dropRatio > 0.05) { // 跌幅超過5%
                                 dropExceeds5Percent = true;
@@ -234,10 +234,10 @@
                         advice: `(步驟2-2) 觀察到有每期之間跌幅超過5%。結論為【波浪型】！` + waveTiming,
                         color: "text-blue-700", bg: "bg-blue-100", icon: "🌊"
                     };
-                } else if (dropCount >= 3) {
+                } else if (dropPhaseLength >= 3) {
                     return {
                         pattern: "✨ 四期型 (小高爐)",
-                        advice: `(步驟2-2) 跌幅皆未超過5%，且已經跌了3個半天以上。結論為【四期型】！` + smallSpikeTiming,
+                        advice: `(步驟2-2) 跌幅皆未超過5%，且已經連續跌了3個半天以上。結論為【四期型】！` + smallSpikeTiming,
                         color: "text-orange-700", bg: "bg-orange-100", icon: "✨"
                     };
                 } else {
